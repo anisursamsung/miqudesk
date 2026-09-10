@@ -1,0 +1,3 @@
+/usr/bin/miqudesk
+/usr/share/miqudesk/miqudesk.conf
+/usr/share/miqudesk/colors.conf
