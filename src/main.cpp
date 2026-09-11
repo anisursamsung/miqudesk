@@ -42,7 +42,6 @@ int main(int argc, char* argv[]) {
 
     // Load configuration
     miqudesk::DeskConfig::get().load(config_path);
-    const auto& cfg = miqudesk::DeskConfig::get();
 
     std::cout << "[miqudesk] Starting interactive desktop canvas..." << std::endl;
 
@@ -60,16 +59,8 @@ int main(int argc, char* argv[]) {
     auto canvas = std::make_unique<miqudesk::DesktopCanvas>(s_engine.get());
     s_canvas = canvas.get();
 
-    // Add default widgets if enabled
-    if (cfg.clock_enabled) {
-        auto clock_w = std::make_shared<miqudesk::ClockWidget>();
-        canvas->add_widget(clock_w, cfg.clock_x, cfg.clock_y, cfg.clock_width, cfg.clock_height);
-    }
-
-    if (cfg.system_enabled) {
-        auto system_w = std::make_shared<miqudesk::SystemWidget>();
-        canvas->add_widget(system_w, cfg.system_x, cfg.system_y, cfg.system_width, cfg.system_height);
-    }
+    // Synchronize built-in widgets according to configuration (clock, system)
+    canvas->sync_builtin_widgets();
 
     // Add desktop app shortcuts from ~/Desktop
     canvas->reload_shortcuts();

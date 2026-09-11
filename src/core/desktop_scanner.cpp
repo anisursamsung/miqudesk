@@ -154,43 +154,7 @@ std::vector<DesktopShortcut> DesktopScanner::get_shortcuts() {
         }
     }
 
-    if (shortcuts.empty()) {
-        shortcuts = get_default_shortcuts();
-    }
-
     return shortcuts;
-}
-
-std::vector<DesktopShortcut> DesktopScanner::get_default_shortcuts() {
-    std::vector<DesktopShortcut> defaults;
-
-    // List of candidate apps to look for on system
-    const std::vector<std::string> candidates = {
-        "/usr/share/applications/kitty.desktop",
-        "/usr/share/applications/firefox.desktop",
-        "/usr/share/applications/org.gnome.Nautilus.desktop",
-        "/usr/share/applications/thunar.desktop",
-        "/usr/share/applications/code.desktop",
-        "/usr/share/applications/yazi.desktop"
-    };
-
-    for (const auto& c : candidates) {
-        if (fs::exists(c)) {
-            DesktopShortcut s;
-            if (parse_desktop_file(c, s)) {
-                defaults.push_back(std::move(s));
-            }
-        }
-    }
-
-    // If still empty (e.g. minimal setup), add fallback commands
-    if (defaults.empty()) {
-        defaults.push_back({"kitty", "Terminal", "kitty", "utilities-terminal", false});
-        defaults.push_back({"firefox", "Browser", "firefox", "firefox", false});
-        defaults.push_back({"files", "Files", "kitty -e yazi", "system-file-manager", false});
-    }
-
-    return defaults;
 }
 
 } // namespace miqudesk

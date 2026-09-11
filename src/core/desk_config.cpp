@@ -114,7 +114,7 @@ std::string DeskConfig::resolve_vars(const std::string& raw_val) const {
 }
 
 std::string DeskConfig::get_user_config_path() {
-    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"colors.conf"});
+    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"colors.conf", "desktop.conf"});
 }
 
 std::string DeskConfig::get_system_config_path() {

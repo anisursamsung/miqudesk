@@ -2,6 +2,8 @@
 #include "desk_config.hpp"
 #include "desktop_scanner.hpp"
 #include "widgets/app_shortcut_widget.hpp"
+#include "widgets/clock_widget.hpp"
+#include "widgets/system_widget.hpp"
 #include <sys/poll.h>
 #include <sys/eventfd.h>
 #include <sys/inotify.h>
@@ -278,15 +280,53 @@ void DesktopCanvas::reload_shortcuts() {
     load_config();
 }
 
+void DesktopCanvas::sync_builtin_widgets() {
+    const auto& cfg = DeskConfig::get();
+
+    // 1. Clock Widget
+    auto clock_it = std::find_if(m_widgets.begin(), m_widgets.end(), [](const std::shared_ptr<WidgetContainer>& wc) {
+        return wc && wc->get_widget() && wc->get_widget()->get_id() == "clock";
+    });
+
+    if (cfg.clock_enabled) {
+        if (clock_it == m_widgets.end()) {
+            auto clock_w = std::make_shared<ClockWidget>();
+            add_widget(clock_w, cfg.clock_x, cfg.clock_y, cfg.clock_width, cfg.clock_height);
+        }
+    } else {
+        if (clock_it != m_widgets.end()) {
+            m_widgets.erase(clock_it);
+        }
+    }
+
+    // 2. System Widget
+    auto sys_it = std::find_if(m_widgets.begin(), m_widgets.end(), [](const std::shared_ptr<WidgetContainer>& wc) {
+        return wc && wc->get_widget() && wc->get_widget()->get_id() == "system";
+    });
+
+    if (cfg.system_enabled) {
+        if (sys_it == m_widgets.end()) {
+            auto sys_w = std::make_shared<SystemWidget>();
+            add_widget(sys_w, cfg.system_x, cfg.system_y, cfg.system_width, cfg.system_height);
+        }
+    } else {
+        if (sys_it != m_widgets.end()) {
+            m_widgets.erase(sys_it);
+        }
+    }
+}
+
 void DesktopCanvas::reload_config() {
     std::cout << "[miqudesk] Hot reload triggered. Reloading configuration, theme, and desktop shortcuts..." << std::endl;
     DeskConfig::get().load();
+    sync_builtin_widgets();
     for (const auto& w : m_widgets) {
         if (w) {
             w->on_config_reload();
         }
     }
     reload_shortcuts();
+    load_config();
     schedule_redraw();
 }
 
@@ -298,15 +338,7 @@ void DesktopCanvas::request_reload() {
 }
 
 static std::string get_config_path() {
-    const char* xdg_config = getenv("XDG_CONFIG_HOME");
-    if (xdg_config && *xdg_config) {
-        return std::string(xdg_config) + "/miqudesk/desktop.conf";
-    }
-    const char* home = getenv("HOME");
-    if (home && *home) {
-        return std::string(home) + "/.config/miqudesk/desktop.conf";
-    }
-    return "";
+    return miqu::Config::ensure_user_config("miqudesk", "desktop.conf");
 }
 
 void DesktopCanvas::load_config() {

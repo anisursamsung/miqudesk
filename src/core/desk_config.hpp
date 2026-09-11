@@ -49,13 +49,13 @@ struct DeskConfig {
     bool clock_enabled = true;
     bool clock_24h = true;
     bool clock_show_seconds = true;
-    int clock_x = 80;
-    int clock_y = 80;
+    int clock_x = 780;
+    int clock_y = 460;
     int clock_width = 360;
     int clock_height = 145;
 
     // System Widget
-    bool system_enabled = true;
+    bool system_enabled = false;
     int system_x = 80;
     int system_y = 245;
     int system_width = 360;

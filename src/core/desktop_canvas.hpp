@@ -46,6 +46,7 @@ public:
     void save_config();
     void reload_config();
     void reload_shortcuts();
+    void sync_builtin_widgets();
     void request_reload();
 
 private:

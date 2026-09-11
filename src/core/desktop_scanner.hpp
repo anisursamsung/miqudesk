@@ -18,9 +18,6 @@ public:
     static std::string get_desktop_dir();
     static std::vector<DesktopShortcut> get_shortcuts();
     static std::string clean_exec(const std::string& raw);
-
-private:
-    static std::vector<DesktopShortcut> get_default_shortcuts();
 };
 
 } // namespace miqudesk
