@@ -114,15 +114,7 @@ std::string DeskConfig::resolve_vars(const std::string& raw_val) const {
 }
 
 std::string DeskConfig::get_user_config_path() {
-    const char* xdg_config = getenv("XDG_CONFIG_HOME");
-    if (xdg_config && *xdg_config) {
-        return std::string(xdg_config) + "/miqudesk/miqudesk.conf";
-    }
-    const char* home = getenv("HOME");
-    if (home && *home) {
-        return std::string(home) + "/.config/miqudesk/miqudesk.conf";
-    }
-    return "";
+    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"colors.conf"});
 }
 
 std::string DeskConfig::get_system_config_path() {

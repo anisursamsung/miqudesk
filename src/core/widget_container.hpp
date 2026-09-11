@@ -1,7 +1,7 @@
 #pragma once
 
 #include "widget.hpp"
-#include <cairo.h>
+#include <miqutoolkit/miqutoolkit.hpp>
 
 namespace miqudesk {
 
@@ -29,9 +29,12 @@ public:
     bool is_resizing() const { return m_is_resizing; }
 
     std::shared_ptr<Widget> get_widget() const { return m_widget; }
+    std::shared_ptr<miqu::ResizableContainer> get_container_view() const { return m_container; }
 
 private:
     std::shared_ptr<Widget> m_widget;
+    std::shared_ptr<miqu::ResizableContainer> m_container;
+
     int m_x = 0;
     int m_y = 0;
     int m_width = 300;

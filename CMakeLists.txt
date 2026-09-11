@@ -11,7 +11,6 @@ set(CMAKE_BUILD_WITH_INSTALL_RPATH TRUE)
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(MIQUTOOLKIT REQUIRED IMPORTED_TARGET miqutoolkit)
-pkg_check_modules(CAIRO REQUIRED IMPORTED_TARGET cairo)
 
 add_executable(miqudesk
     src/main.cpp
@@ -30,7 +29,6 @@ target_include_directories(miqudesk PRIVATE
 
 target_link_libraries(miqudesk PRIVATE
     PkgConfig::MIQUTOOLKIT
-    PkgConfig::CAIRO
     stdc++fs
     pthread
 )
