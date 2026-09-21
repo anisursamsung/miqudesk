@@ -12,6 +12,26 @@ namespace fs = std::filesystem;
 
 static DeskConfig s_desk_config;
 
+DeskConfig::DeskConfig() {
+    sync_defaults_from_toolkit();
+}
+
+void DeskConfig::sync_defaults_from_toolkit() {
+    auto tk = miqu::Config::get();
+    if (!tk) return;
+
+    if (!tk->metrics.font_family.empty()) font_family = tk->metrics.font_family;
+    if (tk->metrics.font_size > 0) font_size = tk->metrics.font_size;
+    if (tk->metrics.border_width >= 0) widget_border_width = tk->metrics.border_width;
+    if (tk->metrics.corner_radius >= 0) widget_corner_radius = tk->metrics.corner_radius;
+
+    font_color = tk->colors.on_surface;
+    font_color_muted = tk->colors.on_surface_variant;
+    accent_color = tk->colors.primary;
+    widget_background = tk->colors.surface;
+    widget_border_color = tk->colors.outline;
+}
+
 DeskConfig& DeskConfig::get() {
     return s_desk_config;
 }
@@ -67,54 +87,8 @@ static miqu::Color parse_color_value(const std::string& input, const miqu::Color
     return miqu::Color::from_hex(s, fallback);
 }
 
-std::string DeskConfig::resolve_vars(const std::string& raw_val) const {
-    std::string val = raw_val;
-    while (!val.empty() && (val.back() == ';' || val.back() == ' ' || val.back() == '\t')) {
-        if (val.back() == ';') { val.pop_back(); break; }
-        val.pop_back();
-    }
-    val = trim_str(val);
-
-    // Direct match
-    auto it = variables.find(val);
-    if (it != variables.end()) {
-        return it->second;
-    }
-    if (!val.empty() && (val[0] == '@' || val[0] == '$')) {
-        auto it2 = variables.find(val.substr(1));
-        if (it2 != variables.end()) {
-            return it2->second;
-        }
-    }
-
-    // Handle alpha(@var, alpha_val)
-    if (val.rfind("alpha(", 0) == 0 && val.back() == ')') {
-        std::string inner = val.substr(6, val.size() - 7);
-        auto comma = inner.find(',');
-        if (comma != std::string::npos) {
-            std::string c_part = trim_str(inner.substr(0, comma));
-            std::string a_part = trim_str(inner.substr(comma + 1));
-            std::string resolved_c = resolve_vars(c_part);
-            return "alpha(" + resolved_c + ", " + a_part + ")";
-        }
-    }
-
-    // Replace embedded occurrences of @var or $var
-    std::string result = val;
-    for (const auto& [k, v] : variables) {
-        if (k.empty()) continue;
-        std::string needle = (k[0] == '@' || k[0] == '$') ? k : ("@" + k);
-        size_t pos = 0;
-        while ((pos = result.find(needle, pos)) != std::string::npos) {
-            result.replace(pos, needle.length(), v);
-            pos += v.length();
-        }
-    }
-    return result;
-}
-
 std::string DeskConfig::get_user_config_path() {
-    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"colors.conf", "desktop.conf"});
+    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"desktop.conf"});
 }
 
 std::string DeskConfig::get_system_config_path() {
@@ -154,24 +128,7 @@ void DeskConfig::load_file_internal(const std::string& raw_path, int depth) {
         line = trim_str(line);
         if (line.empty() || line[0] == '#' || line[0] == ';') continue;
 
-        // Check for CSS-style @define-color <name> <val>;
-        if (line.rfind("@define-color ", 0) == 0) {
-            std::string rest = trim_str(line.substr(14));
-            auto space = rest.find_first_of(" \t");
-            if (space != std::string::npos) {
-                std::string var_name = trim_str(rest.substr(0, space));
-                std::string var_val = trim_str(rest.substr(space + 1));
-                if (!var_val.empty() && var_val.back() == ';') var_val.pop_back();
-                var_val = trim_str(var_val);
-
-                variables[var_name] = var_val;
-                variables["@" + var_name] = var_val;
-                variables["$" + var_name] = var_val;
-            }
-            continue;
-        }
-
-        // Check for space-separated include / source / @import (e.g. "include colors.conf", "@import colors.css")
+        // Check for space-separated include / source / @import (e.g. "include foo.conf")
         std::string inc_file;
         if (line.rfind("include ", 0) == 0) {
             inc_file = trim_str(line.substr(8));
@@ -234,115 +191,96 @@ void DeskConfig::load_file_internal(const std::string& raw_path, int depth) {
             val = trim_str(val.substr(0, c_pos));
         }
 
-        // Check if key is a variable definition: @var = val or $var = val
-        if (!key.empty() && (key[0] == '@' || key[0] == '$')) {
-            std::string raw_name = key.substr(1);
-            std::string resolved_v = resolve_vars(val);
-            variables[key] = resolved_v;
-            variables[raw_name] = resolved_v;
-            variables["@" + raw_name] = resolved_v;
-            variables["$" + raw_name] = resolved_v;
-            continue;
-        }
-
         std::string lower_key = key;
         std::transform(lower_key.begin(), lower_key.end(), lower_key.begin(), ::tolower);
-        std::string resolved_val = resolve_vars(val);
 
         // Section: [general] or typography/appearance
         if (lower_key == "font_family" || lower_key == "font") {
-            font_family = resolved_val;
+            font_family = val;
         } else if (lower_key == "font_size") {
-            try { font_size = std::max(6, std::stoi(resolved_val)); } catch (...) {}
+            try { font_size = std::max(6, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "font_bold" || lower_key == "bold") {
-            font_bold = parse_bool(resolved_val);
+            font_bold = parse_bool(val);
         } else if (lower_key == "font_color" || lower_key == "text_color" || lower_key == "color" || lower_key == "text" || lower_key == "on_surface" || lower_key == "fg") {
-            font_color = parse_color_value(resolved_val, font_color);
+            font_color = parse_color_value(val, font_color);
         } else if (lower_key == "font_color_muted" || lower_key == "text_muted" || lower_key == "muted_color" || lower_key == "on_surface_variant" || lower_key == "muted") {
-            font_color_muted = parse_color_value(resolved_val, font_color_muted);
+            font_color_muted = parse_color_value(val, font_color_muted);
         } else if (lower_key == "accent_color" || lower_key == "primary" || lower_key == "accent" || lower_key == "color_primary") {
-            accent_color = parse_color_value(resolved_val, accent_color);
+            accent_color = parse_color_value(val, accent_color);
         } else if (lower_key == "widget_background" || lower_key == "widget_bg_color" || lower_key == "background" || lower_key == "surface" || lower_key == "bg") {
-            widget_background = parse_color_value(resolved_val, widget_background);
+            widget_background = parse_color_value(val, widget_background);
         } else if (lower_key == "widget_border_color" || lower_key == "border_color" || lower_key == "outline" || lower_key == "border") {
-            widget_border_color = parse_color_value(resolved_val, widget_border_color);
+            widget_border_color = parse_color_value(val, widget_border_color);
         } else if (lower_key == "widget_border_width" || lower_key == "border_width") {
-            try { widget_border_width = std::max(0, std::stoi(resolved_val)); } catch (...) {}
+            try { widget_border_width = std::max(0, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "widget_corner_radius" || lower_key == "corner_radius" || lower_key == "rounding") {
-            try { widget_corner_radius = std::max(0, std::stoi(resolved_val)); } catch (...) {}
+            try { widget_corner_radius = std::max(0, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "grid_snap") {
-            try { grid_snap = std::max(1, std::stoi(resolved_val)); } catch (...) {}
+            try { grid_snap = std::max(1, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "edit_mode") {
-            edit_mode = parse_bool(resolved_val);
+            edit_mode = parse_bool(val);
         }
 
         // Desktop / Shortcuts settings
         else if (lower_key == "shortcut_bold") {
-            shortcut_bold = parse_bool(resolved_val);
+            shortcut_bold = parse_bool(val);
         } else if (lower_key == "desktop_max_chars" || lower_key == "max_characters" || lower_key == "max_chars") {
-            try { desktop_max_chars = std::max(0, std::stoi(resolved_val)); } catch (...) {}
+            try { desktop_max_chars = std::max(0, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "shortcut_width") {
-            try { shortcut_width = std::max(40, std::stoi(resolved_val)); } catch (...) {}
+            try { shortcut_width = std::max(40, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "shortcut_height") {
-            try { shortcut_height = std::max(40, std::stoi(resolved_val)); } catch (...) {}
+            try { shortcut_height = std::max(40, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "overall_size" || lower_key == "shortcut_size") {
             try {
-                int s = std::max(40, std::stoi(resolved_val));
+                int s = std::max(40, std::stoi(val));
                 shortcut_width = s;
                 shortcut_height = s + 8;
             } catch (...) {}
         } else if (lower_key == "icon_size") {
-            try { icon_size = std::max(16, std::stoi(resolved_val)); } catch (...) {}
+            try { icon_size = std::max(16, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "shortcut_background" || lower_key == "shortcut_bg_color") {
-            shortcut_background = parse_color_value(resolved_val, shortcut_background);
+            shortcut_background = parse_color_value(val, shortcut_background);
         } else if (lower_key == "shortcut_border_color") {
-            shortcut_border_color = parse_color_value(resolved_val, shortcut_border_color);
+            shortcut_border_color = parse_color_value(val, shortcut_border_color);
         } else if (lower_key == "shortcut_corner_radius" || lower_key == "shortcut_border_radius") {
-            try { shortcut_corner_radius = std::max(0, std::stoi(resolved_val)); } catch (...) {}
+            try { shortcut_corner_radius = std::max(0, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "double_click_to_launch" || lower_key == "double_click") {
-            double_click_to_launch = parse_bool(resolved_val);
+            double_click_to_launch = parse_bool(val);
         } else if (lower_key == "double_click_time_ms" || lower_key == "double_click_interval") {
-            try { double_click_time_ms = std::max(50, std::stoi(resolved_val)); } catch (...) {}
+            try { double_click_time_ms = std::max(50, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "shortcuts_start_x" || (current_section == "desktop" && lower_key == "start_x")) {
-            try { shortcuts_start_x = std::stoi(resolved_val); } catch (...) {}
+            try { shortcuts_start_x = std::stoi(val); } catch (...) {}
         } else if (lower_key == "shortcuts_start_y" || (current_section == "desktop" && lower_key == "start_y")) {
-            try { shortcuts_start_y = std::stoi(resolved_val); } catch (...) {}
+            try { shortcuts_start_y = std::stoi(val); } catch (...) {}
         } else if (lower_key == "col_spacing") {
-            try { col_spacing = std::max(10, std::stoi(resolved_val)); } catch (...) {}
+            try { col_spacing = std::max(10, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "row_spacing") {
-            try { row_spacing = std::max(10, std::stoi(resolved_val)); } catch (...) {}
+            try { row_spacing = std::max(10, std::stoi(val)); } catch (...) {}
         } else if (lower_key == "items_per_col") {
-            try { items_per_col = std::max(1, std::stoi(resolved_val)); } catch (...) {}
+            try { items_per_col = std::max(1, std::stoi(val)); } catch (...) {}
         }
 
         // Clock Widget settings
         else if (current_section == "clock" || lower_key.rfind("clock_", 0) == 0) {
             std::string subkey = (current_section == "clock") ? lower_key : lower_key.substr(6);
-            if (subkey == "bold") clock_bold = parse_bool(resolved_val);
-            else if (subkey == "enabled") clock_enabled = parse_bool(resolved_val);
-            else if (subkey == "format_24h" || subkey == "24h") clock_24h = parse_bool(resolved_val);
-            else if (subkey == "show_seconds") clock_show_seconds = parse_bool(resolved_val);
-            else if (subkey == "x") { try { clock_x = std::stoi(resolved_val); } catch (...) {} }
-            else if (subkey == "y") { try { clock_y = std::stoi(resolved_val); } catch (...) {} }
-            else if (subkey == "width") { try { clock_width = std::max(100, std::stoi(resolved_val)); } catch (...) {} }
-            else if (subkey == "height") { try { clock_height = std::max(50, std::stoi(resolved_val)); } catch (...) {} }
+            if (subkey == "bold") clock_bold = parse_bool(val);
+            else if (subkey == "enabled") clock_enabled = parse_bool(val);
+            else if (subkey == "format_24h" || subkey == "24h") clock_24h = parse_bool(val);
+            else if (subkey == "show_seconds") clock_show_seconds = parse_bool(val);
+            else if (subkey == "x") { try { clock_x = std::stoi(val); } catch (...) {} }
+            else if (subkey == "y") { try { clock_y = std::stoi(val); } catch (...) {} }
+            else if (subkey == "width") { try { clock_width = std::max(100, std::stoi(val)); } catch (...) {} }
+            else if (subkey == "height") { try { clock_height = std::max(50, std::stoi(val)); } catch (...) {} }
         }
 
         // System Widget settings
         else if (current_section == "system" || lower_key.rfind("system_", 0) == 0) {
             std::string subkey = (current_section == "system") ? lower_key : lower_key.substr(7);
-            if (subkey == "enabled") system_enabled = parse_bool(resolved_val);
-            else if (subkey == "x") { try { system_x = std::stoi(resolved_val); } catch (...) {} }
-            else if (subkey == "y") { try { system_y = std::stoi(resolved_val); } catch (...) {} }
-            else if (subkey == "width") { try { system_width = std::max(100, std::stoi(resolved_val)); } catch (...) {} }
-            else if (subkey == "height") { try { system_height = std::max(50, std::stoi(resolved_val)); } catch (...) {} }
-        }
-
-        // Store unrecognized keys as variables so they can be referenced as @key
-        else {
-            variables[key] = resolved_val;
-            variables["@" + key] = resolved_val;
-            variables["$" + key] = resolved_val;
+            if (subkey == "enabled") system_enabled = parse_bool(val);
+            else if (subkey == "x") { try { system_x = std::stoi(val); } catch (...) {} }
+            else if (subkey == "y") { try { system_y = std::stoi(val); } catch (...) {} }
+            else if (subkey == "width") { try { system_width = std::max(100, std::stoi(val)); } catch (...) {} }
+            else if (subkey == "height") { try { system_height = std::max(50, std::stoi(val)); } catch (...) {} }
         }
     }
 }
@@ -378,20 +316,22 @@ void DeskConfig::load(const std::string& custom_path) {
     loaded_files.clear();
     watched_dirs.clear();
 
-    // Always ensure user config dir, theme current dir, and Desktop dir are in watched dirs if they exist
+    // Always ensure user config dir and Desktop dir are in watched dirs if they exist
     std::string user_cfg_dir = expand_home("~/.config/miqudesk");
     if (fs::exists(user_cfg_dir)) watched_dirs.push_back(user_cfg_dir);
-    std::string theme_curr_dir = expand_home("~/.config/theme/current");
-    if (fs::exists(theme_curr_dir)) watched_dirs.push_back(theme_curr_dir);
     std::string desktop_dir = expand_home("~/Desktop");
     if (fs::exists(desktop_dir)) watched_dirs.push_back(desktop_dir);
 
     std::cout << "[miqudesk] Loading config from: " << target_path << std::endl;
 
-    // Synchronize toolkit theme
+    // 1. Synchronize toolkit theme
+    miqu::Config::get()->init_toolkit_defaults();
     miqu::Config::get()->load_from_file(target_path);
 
-    // Recursively parse configuration with include/source support
+    // 2. Seed defaults directly from miqutoolkit
+    sync_defaults_from_toolkit();
+
+    // 3. Recursively parse configuration with include/source support
     load_file_internal(target_path, 0);
 }
 

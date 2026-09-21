@@ -8,6 +8,7 @@
 #include <thread>
 #include <mutex>
 #include <condition_variable>
+#include <atomic>
 
 namespace miqudesk {
 
@@ -67,6 +68,7 @@ private:
     std::mutex m_timer_mutex;
     std::condition_variable m_timer_cv;
     bool m_running = true;
+    std::atomic<bool> m_reload_pending{false};
 };
 
 } // namespace miqudesk

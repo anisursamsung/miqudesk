@@ -2,7 +2,6 @@
 
 #include <miqutoolkit/miqutoolkit.hpp>
 #include <string>
-#include <unordered_map>
 
 namespace miqudesk {
 
@@ -61,10 +60,6 @@ struct DeskConfig {
     int system_width = 360;
     int system_height = 135;
 
-    // Variables storage (@bg, @fg, etc.)
-    std::unordered_map<std::string, std::string> variables;
-    std::string resolve_vars(const std::string& val) const;
-
     // Active path and watched directories for hot reload
     std::string active_config_path;
     std::vector<std::string> loaded_files;
@@ -72,7 +67,9 @@ struct DeskConfig {
     const std::vector<std::string>& get_watched_dirs() const { return watched_dirs; }
 
     // Singleton & loader
+    DeskConfig();
     static DeskConfig& get();
+    void sync_defaults_from_toolkit();
     void load(const std::string& custom_path = "");
     void load_file_internal(const std::string& path, int depth = 0);
     static std::string get_user_config_path();

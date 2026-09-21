@@ -146,6 +146,10 @@ bool DesktopCanvas::init() {
         return false;
     }
 
+    m_engine->add_theme_change_listener([this]() {
+        request_reload();
+    });
+
     setup_timer();
     setup_watcher();
     return true;
@@ -180,14 +184,20 @@ void DesktopCanvas::schedule_redraw() {
 }
 
 void DesktopCanvas::setup_timer() {
-    // Spawn timer thread to trigger tick every second
+    // Spawn timer thread to trigger tick every second on the main loop
     m_timer_thread = std::thread([this]() {
         std::unique_lock<std::mutex> lock(m_timer_mutex);
         while (m_running) {
             if (m_timer_cv.wait_for(lock, std::chrono::seconds(1), [this]() { return !m_running; })) {
                 break;
             }
-            tick();
+            if (m_engine) {
+                m_engine->post([this]() {
+                    if (m_running) {
+                        tick();
+                    }
+                });
+            }
         }
     });
 }
@@ -199,7 +209,7 @@ void DesktopCanvas::setup_watcher() {
     auto add_watch_dir = [this](const std::string& dir) {
         if (m_inotify_fd >= 0 && fs::exists(dir)) {
             inotify_add_watch(m_inotify_fd, dir.c_str(),
-                IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE | IN_MODIFY);
+                IN_CLOSE_WRITE | IN_MOVED_TO | IN_MOVED_FROM | IN_CREATE | IN_DELETE);
             std::cout << "[miqudesk] Hot reload watching directory: " << dir << std::endl;
         }
     };
@@ -208,7 +218,7 @@ void DesktopCanvas::setup_watcher() {
         add_watch_dir(d);
     }
 
-    m_watcher_thread = std::thread([this, add_watch_dir]() {
+    m_watcher_thread = std::thread([this]() {
         struct pollfd pfd[2];
         pfd[0].fd = m_inotify_fd;
         pfd[0].events = POLLIN;
@@ -230,17 +240,33 @@ void DesktopCanvas::setup_watcher() {
             }
 
             if (pfd[0].revents & POLLIN) {
-                // Wait 60ms to let multi-file or temporary writes settle
-                std::this_thread::sleep_for(std::chrono::milliseconds(60));
-                char buffer[4096];
-                while (read(m_inotify_fd, buffer, sizeof(buffer)) > 0) {}
                 trigger_reload = true;
             }
 
             if (trigger_reload && m_running) {
-                reload_config();
-                for (const auto& d : DeskConfig::get().get_watched_dirs()) {
-                    add_watch_dir(d);
+                // Debounce window (150ms) to allow multi-file writes or burst signals to settle
+                std::this_thread::sleep_for(std::chrono::milliseconds(150));
+
+                // Drain inotify buffer
+                char buffer[4096];
+                while (read(m_inotify_fd, buffer, sizeof(buffer)) > 0) {}
+
+                // Drain eventfd buffer
+                if (m_reload_event_fd >= 0) {
+                    uint64_t val = 0;
+                    while (read(m_reload_event_fd, &val, sizeof(val)) > 0) {}
+                }
+
+                if (m_running && m_engine) {
+                    bool expected = false;
+                    if (m_reload_pending.compare_exchange_strong(expected, true)) {
+                        m_engine->post([this]() {
+                            m_reload_pending.store(false);
+                            if (m_running) {
+                                reload_config();
+                            }
+                        });
+                    }
                 }
             }
         }
