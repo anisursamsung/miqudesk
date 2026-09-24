@@ -364,7 +364,11 @@ void DesktopCanvas::request_reload() {
 }
 
 static std::string get_config_path() {
-    return miqu::Config::ensure_user_config("miqudesk", "desktop.conf");
+    std::string user_cfg_dir = miqu::FsUtils::get_user_config_dir("miqudesk");
+    if (!user_cfg_dir.empty()) {
+        return user_cfg_dir + "/desktop.conf";
+    }
+    return "";
 }
 
 void DesktopCanvas::load_config() {

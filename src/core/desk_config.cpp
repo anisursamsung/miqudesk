@@ -88,7 +88,14 @@ static miqu::Color parse_color_value(const std::string& input, const miqu::Color
 }
 
 std::string DeskConfig::get_user_config_path() {
-    return miqu::Config::ensure_user_config("miqudesk", "miqudesk.conf", {"desktop.conf"});
+    std::string user_cfg_dir = miqu::FsUtils::get_user_config_dir("miqudesk");
+    if (!user_cfg_dir.empty()) {
+        std::string p = user_cfg_dir + "/miqudesk.conf";
+        if (fs::exists(p)) {
+            return p;
+        }
+    }
+    return "";
 }
 
 std::string DeskConfig::get_system_config_path() {
@@ -290,49 +297,43 @@ void DeskConfig::load(const std::string& custom_path) {
         active_config_path = custom_path;
     }
 
-    std::string target_path;
-    if (!active_config_path.empty() && fs::exists(active_config_path)) {
-        target_path = active_config_path;
-    } else {
-        std::string user_path = get_user_config_path();
-        std::string sys_path = get_system_config_path();
-        std::string dev_path = "assets/miqudesk.conf";
-
-        if (!user_path.empty() && fs::exists(user_path)) {
-            target_path = user_path;
-        } else if (fs::exists(sys_path)) {
-            target_path = sys_path;
-        } else if (fs::exists(dev_path)) {
-            target_path = dev_path;
-        }
-    }
-
-    if (target_path.empty() || !fs::exists(target_path)) {
-        std::cout << "[miqudesk] No config file found. Using built-in defaults." << std::endl;
-        return;
-    }
-
-    active_config_path = target_path;
+    // Always reset tracking state
     loaded_files.clear();
     watched_dirs.clear();
 
-    // Always ensure user config dir and Desktop dir are in watched dirs if they exist
+    // Always watch user config dir and Desktop dir if they exist
     std::string user_cfg_dir = expand_home("~/.config/miqudesk");
     if (fs::exists(user_cfg_dir)) watched_dirs.push_back(user_cfg_dir);
     std::string desktop_dir = expand_home("~/Desktop");
     if (fs::exists(desktop_dir)) watched_dirs.push_back(desktop_dir);
 
-    std::cout << "[miqudesk] Loading config from: " << target_path << std::endl;
-
-    // 1. Synchronize toolkit theme
-    miqu::Config::get()->init_toolkit_defaults();
-    miqu::Config::get()->load_from_file(target_path);
-
-    // 2. Seed defaults directly from miqutoolkit
+    // 1. Synchronize with toolkit theme (always, even without a config file)
     sync_defaults_from_toolkit();
 
-    // 3. Recursively parse configuration with include/source support
-    load_file_internal(target_path, 0);
+    // 2. Resolve config file path
+    std::string target_path;
+    if (!active_config_path.empty() && fs::exists(active_config_path)) {
+        target_path = active_config_path;
+    } else {
+        std::string user_path = get_user_config_path();
+        if (!user_path.empty() && fs::exists(user_path)) {
+            target_path = user_path;
+        }
+    }
+
+    // 3. If a config file exists, load it as an overlay on top of toolkit defaults
+    if (!target_path.empty()) {
+        active_config_path = target_path;
+        std::cout << "[miqudesk] Loading config from: " << target_path << std::endl;
+
+        // Feed into toolkit config system so setup_config_watcher() tracks it
+        miqu::Config::get()->load_from_file(target_path);
+
+        // Parse app-specific options (grid, shortcuts, clock, system widgets, etc.)
+        load_file_internal(target_path, 0);
+    } else {
+        std::cout << "[miqudesk] No config file found. Using toolkit defaults." << std::endl;
+    }
 }
 
 } // namespace miqudesk

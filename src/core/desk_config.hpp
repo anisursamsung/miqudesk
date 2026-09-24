@@ -12,15 +12,15 @@ struct DeskConfig {
     bool font_bold = false;
     bool shortcut_bold = false;
     bool clock_bold = false;
-    miqu::Color font_color = miqu::Color::rgba(0.95f, 0.98f, 1.0f, 1.0f);
-    miqu::Color font_color_muted = miqu::Color::rgba(0.65f, 0.75f, 0.90f, 0.85f);
-    miqu::Color accent_color = miqu::Color::rgba(0.20f, 0.75f, 1.0f, 1.0f);
+    miqu::Color font_color;          // Synced from toolkit: colors.on_surface
+    miqu::Color font_color_muted;    // Synced from toolkit: colors.on_surface_variant
+    miqu::Color accent_color;        // Synced from toolkit: colors.primary
 
-    // Widget Appearance (Uniform Glassmorphism)
-    miqu::Color widget_background = miqu::Color::rgba(0.06f, 0.08f, 0.13f, 0.78f);
-    miqu::Color widget_border_color = miqu::Color::rgba(1.0f, 1.0f, 1.0f, 0.15f);
-    int widget_border_width = 1;
-    int widget_corner_radius = 20;
+    // Widget Appearance (synced from toolkit, overridable via user config)
+    miqu::Color widget_background;   // Synced from toolkit: colors.surface
+    miqu::Color widget_border_color; // Synced from toolkit: colors.outline
+    int widget_border_width = 1;     // Synced from toolkit: metrics.border_width
+    int widget_corner_radius = 20;   // Synced from toolkit: metrics.corner_radius
 
     // Desktop / App Shortcuts
     int desktop_max_chars = 14;      // Max characters in .desktop names before truncating (0 to disable)
